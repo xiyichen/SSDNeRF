@@ -81,6 +81,7 @@ class MultiSceneNeRF(BaseNeRF):
                     cache_files = os.listdir(cache_load_from)
                     cache_files.sort()
                     if len(cache_files) > 0:
+                        print(len(cache_files), self.cache_size)
                         assert len(cache_files) == self.cache_size
                         for ind in self.cache.keys():
                             self.cache[ind] = torch.load(

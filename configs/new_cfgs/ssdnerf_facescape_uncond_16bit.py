@@ -1,4 +1,4 @@
-name = 'ssdnerf_cars_recons1v_16bit'
+name = 'ssdnerf_cars_uncond_16bit'
 
 model = dict(
     type='DiffusionNeRF',
@@ -56,7 +56,7 @@ model = dict(
     cache_16bit=True)
 
 save_interval = 5000
-eval_interval = 500
+eval_interval = 20000
 code_dir = 'cache/' + name + '/code'
 work_dir = 'work_dirs/' + name
 
@@ -72,20 +72,10 @@ train_cfg = dict(
     viz_dir=None)
 test_cfg = dict(
     img_size=(128, 128),
-    num_timesteps=75,
+    num_timesteps=50,
     clip_range=[-2, 2],
     density_thresh=0.1,
     # max_render_rays=16 * 128 * 128,
-    dt_gamma_scale=0.5,
-    n_inverse_rays=2 ** 14,
-    override_cfg={'diffusion_ema.ddpm_loss.weight_scale': 5.0},
-    loss_coef=0.1 / (128 * 128),
-    guidance_gain=2.2 * (2 ** 14),
-    cond_mode='guide_optim',
-    n_inverse_steps=25,
-    extra_scene_step=3,
-    optimizer=dict(type='Adam', lr=0.02, weight_decay=0.),
-    lr_scheduler=dict(type='ExponentialLR', gamma=0.998)
 )
 
 optimizer = dict(
@@ -113,31 +103,33 @@ data = dict(
         cache_path='data/shapenet/cars_test_cache.pkl'),
     train_dataloader=dict(split_data=True))
 lr_config = dict(
-    policy='Fixed',
+    policy='step',
     warmup='linear',
     warmup_iters=500,
-    warmup_ratio=0.001)
+    warmup_ratio=0.001,
+    gamma=0.5,
+    step=[500000])
 checkpoint_config = dict(interval=save_interval, by_epoch=False, max_keep_ckpts=2)
 
 evaluation = [
     dict(
         type='GenerativeEvalHook3D',
-        data='val_cond',
+        data='val_uncond',
         interval=eval_interval,
         feed_batch_size=32,
         viz_step=32,
         metrics=dict(
-            type='FID',
-            num_images=250,
+            type='FIDKID',
+            num_images=704 * 251,
             inception_pkl='work_dirs/cache/cars_test_inception_stylegan.pkl',
             inception_args=dict(
                 type='StyleGAN',
                 inception_path='work_dirs/cache/inception-2015-12-05.pt'),
-            bgr2rgb=False),  # already is rgb
-        viz_dir=work_dir + '/viz_cond',
+            bgr2rgb=False),
+        viz_dir=work_dir + '/viz_uncond',
         save_best_ckpt=False)]
 
-total_iters = 60000
+total_iters = 1000000
 log_config = dict(
     interval=50,
     hooks=[
@@ -165,8 +157,11 @@ custom_hooks = [
         viz_dir='cache/' + name + '/viz'),
     dict(
         type='ModelUpdaterHook',
-        step=[2000],
-        cfgs=[{'train_cfg.extra_scene_step': 3}],
+        step=[2000, 100000, 500000],
+        cfgs=[{'train_cfg.extra_scene_step': 3},
+              {'train_cfg.extra_scene_step': 1},
+              {'train_cfg.extra_scene_step': 1,
+               'train_cfg.optimizer.lr': 0.02}],
         by_epoch=False)
 ]
 

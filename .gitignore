@@ -16,3 +16,4 @@ build/
 *.stl
 *.pth
 /venv/
+nohup_logs/

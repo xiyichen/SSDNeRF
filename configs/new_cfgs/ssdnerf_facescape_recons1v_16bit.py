@@ -1,4 +1,4 @@
-name = 'ssdnerf_cars_recons1v_16bit'
+name = 'ssdnerf_facescape_recons1v_16bit'
 
 model = dict(
     type='DiffusionNeRF',
@@ -52,11 +52,11 @@ model = dict(
     pixel_loss=dict(
         type='MSELoss',
         loss_weight=20),
-    cache_size=2458,
+    cache_size=6406,
     cache_16bit=True)
 
-save_interval = 5000
-eval_interval = 500
+save_interval = 1000
+eval_interval = 100
 code_dir = 'cache/' + name + '/code'
 work_dir = 'work_dirs/' + name
 
@@ -93,24 +93,17 @@ optimizer = dict(
     decoder=dict(type='Adam', lr=1e-3, weight_decay=0.))
 dataset_type = 'ShapeNetSRN'
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=24,
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        data_prefix='data/shapenet/cars_train',
-        cache_path='data/shapenet/cars_train_cache.pkl'),
-    val_uncond=dict(
-        type=dataset_type,
-        data_prefix='data/shapenet/cars_test',
-        load_imgs=False,
-        num_test_imgs=251,
-        scene_id_as_name=True,
-        cache_path='data/shapenet/cars_test_cache.pkl'),
+        data_prefix='data/facescape/facescape_train',
+        cache_path='data/facescape/facescape_train_cache.pkl'),
     val_cond=dict(
         type=dataset_type,
-        data_prefix='data/shapenet/cars_test',
-        specific_observation_idcs=[64],
-        cache_path='data/shapenet/cars_test_cache.pkl'),
+        data_prefix='data/facescape/facescape_test',
+        specific_observation_idcs=[6],
+        cache_path='data/facescape/facescape_test_cache.pkl'),
     train_dataloader=dict(split_data=True))
 lr_config = dict(
     policy='Fixed',
@@ -124,12 +117,12 @@ evaluation = [
         type='GenerativeEvalHook3D',
         data='val_cond',
         interval=eval_interval,
-        feed_batch_size=32,
+        feed_batch_size=64,
         viz_step=32,
         metrics=dict(
             type='FID',
-            num_images=250,
-            inception_pkl='work_dirs/cache/cars_test_inception_stylegan.pkl',
+            num_images=30,
+            inception_pkl='work_dirs/cache/facescape_test_inception_stylegan.pkl',
             inception_args=dict(
                 type='StyleGAN',
                 inception_path='work_dirs/cache/inception-2015-12-05.pt'),
@@ -137,7 +130,7 @@ evaluation = [
         viz_dir=work_dir + '/viz_cond',
         save_best_ckpt=False)]
 
-total_iters = 60000
+total_iters = 80000
 log_config = dict(
     interval=50,
     hooks=[
@@ -155,7 +148,7 @@ custom_hooks = [
         start_iter=0,
         momentum_policy='rampup',
         momentum_cfg=dict(
-            ema_kimg=4, ema_rampup=0.05, batch_size=16, eps=1e-8),
+            ema_kimg=4, ema_rampup=0.05, batch_size=32, eps=1e-8),
         priority='VERY_HIGH'),
     dict(
         type='SaveCacheHook',
