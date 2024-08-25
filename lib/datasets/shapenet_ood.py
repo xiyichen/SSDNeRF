@@ -4,9 +4,80 @@ import numpy as np
 import torch
 import mmcv
 from torch.utils.data import Dataset
+import torch.nn.functional as F
+import cv2
 
 from mmcv.parallel import DataContainer as DC
 from mmgen.datasets.builder import DATASETS
+from scipy.spatial.transform import Rotation as Rot
+
+def qvec2rotmat(qvec):
+    return np.array(
+        [
+            [
+                1 - 2 * qvec[2] ** 2 - 2 * qvec[3] ** 2,
+                2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
+                2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2],
+            ],
+            [
+                2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
+                1 - 2 * qvec[1] ** 2 - 2 * qvec[3] ** 2,
+                2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1],
+            ],
+            [
+                2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
+                2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
+                1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2,
+            ],
+        ]
+    )
+
+def read_transparent_png(filename):
+    image_4channel = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
+    alpha_channel = image_4channel[:,:,3]
+    rgb_channels = image_4channel[:,:,:3]
+
+    # White Background Image
+    white_background_image = np.ones_like(rgb_channels, dtype=np.uint8) * 255
+
+    # Alpha factor
+    alpha_factor = alpha_channel[:,:,np.newaxis].astype(np.float32) / 255.0
+    alpha_factor = np.concatenate((alpha_factor,alpha_factor,alpha_factor), axis=2)
+
+    # Transparent Image Rendered on White Background
+    base = rgb_channels.astype(np.float32) * alpha_factor
+    white = white_background_image.astype(np.float32) * (1 - alpha_factor)
+    final_image = base + white
+    final_image = (final_image).astype(np.uint8)
+    final_image = cv2.resize(final_image, (128, 128))
+    return final_image
+
+def read_images_text(path):
+    """
+    see: src/base/reconstruction.cc
+        void Reconstruction::ReadImagesText(const std::string& path)
+        void Reconstruction::WriteImagesText(const std::string& path)
+    """
+    images = {}
+    with open(path, "r") as fid:
+        while True:
+            line = fid.readline()
+            if not line:
+                break
+            line = line.strip()
+            if len(line) > 0 and line[0] != "#":
+                elems = line.split()
+                image_id = int(elems[0])
+                qvec = np.array(tuple(map(float, elems[1:5])))
+                tvec = np.array(tuple(map(float, elems[5:8])))
+                camera_id = int(elems[8])
+                image_name = elems[9]
+                elems = fid.readline().split()
+                d = {}
+                d['R'] = qvec2rotmat(qvec)
+                d['t'] = tvec
+                images[image_name] = d
+    return images
 
 
 def load_intrinsics(path):
@@ -25,7 +96,7 @@ def load_pose(path):
 
 
 @DATASETS.register_module()
-class ShapeNetSRN(Dataset):
+class ShapeNetOOD(Dataset):
     def __init__(self,
                  data_prefix,
                  code_dir=None,
@@ -45,7 +116,7 @@ class ShapeNetSRN(Dataset):
                  test_mode=False,
                  step=1,  # only for debug & visualization purpose
                  ):
-        super(ShapeNetSRN, self).__init__()
+        super(ShapeNetOOD, self).__init__()
         self.data_prefix = data_prefix
         self.code_dir = code_dir
         self.code_only = code_only
@@ -101,17 +172,31 @@ class ShapeNetSRN(Dataset):
                 for name in sample_dir_list:
                     sample_dir = os.path.join(data_prefix, name)
                     if os.path.isdir(sample_dir):
-                        intrinsics = load_intrinsics(os.path.join(sample_dir, 'intrinsics.txt'))
-                        image_dir = os.path.join(sample_dir, 'rgb')
+                        # intrinsics = load_intrinsics(os.path.join(sample_dir, 'intrinsics.txt'))
+                        intrinsics = 400, 400, 64, 64, 128, 128
+                        image_dir = os.path.join(sample_dir, 'images')
                         image_names = os.listdir(image_dir)
                         image_names.sort()
                         image_paths = []
+                        # for image_name in image_names:
+                        #     image_paths.append(os.path.join(image_dir, image_name))
+                            # pose_path = os.path.join(
+                            #     sample_dir, 'pose/' + os.path.splitext(image_name)[0] + '.txt')
+                            # poses.append(load_pose(pose_path))
+                        poses_colmap = read_images_text(f'{sample_dir}/sparse/0/images.txt')
                         poses = []
                         for image_name in image_names:
+                            w2c = np.eye(4)
+                            w2c[:3,:3] = poses_colmap[image_name]['R']
+                            w2c[:3,3] = poses_colmap[image_name]['t'].reshape(3,)
+                            c2w = np.linalg.inv(w2c)
+                            
+                            # coord_trans_world = np.array(
+                            #     [[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+                            # )
+                            # c2w = coord_trans_world@c2w
                             image_paths.append(os.path.join(image_dir, image_name))
-                            pose_path = os.path.join(
-                                sample_dir, 'pose/' + os.path.splitext(image_name)[0] + '.txt')
-                            poses.append(load_pose(pose_path))
+                            poses.append(c2w)
                         scenes.append(dict(
                             intrinsics=intrinsics,
                             image_paths=image_paths,
@@ -156,8 +241,13 @@ class ShapeNetSRN(Dataset):
                         ], dim=-2))
                     img_paths_list.append(image_paths[img_id])
                     if self.load_imgs:
-                        img = mmcv.imread(image_paths[img_id], channel_order='rgb')
+                        # img = mmcv.imread(image_paths[img_id], channel_order='rgb')
+                        # img = cv2.imread(image_paths[img_id])
+                        img = read_transparent_png(image_paths[img_id])
                         img = torch.from_numpy(img.astype(np.float32) / 255)  # (h, w, 3)
+                        
+                        
+                        
                         imgs_list.append(img)
                 poses_list = torch.stack(poses_list, dim=0)  # (n, 4, 4)
                 intrinsics = intrinsics_single[None].expand(len(img_ids), -1)

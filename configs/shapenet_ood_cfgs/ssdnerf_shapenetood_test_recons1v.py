@@ -1,4 +1,4 @@
-name = 'ssdnerf_cars_recons1v'
+name = 'ssdnerf_shapenetood_test_recons1v'
 
 model = dict(
     type='DiffusionNeRF',
@@ -101,7 +101,7 @@ test_cfg = dict(
 optimizer = dict(
     diffusion=dict(type='Adam', lr=1e-4, weight_decay=0.),
     decoder=dict(type='Adam', lr=1e-3, weight_decay=0.))
-dataset_type = 'ShapeNetSRN'
+dataset_type = 'ShapeNetOOD'
 data = dict(
     samples_per_gpu=8,
     workers_per_gpu=4,
@@ -119,9 +119,9 @@ data = dict(
     #     cache_path='data/shapenet/cars_test_cache.pkl'),
     val_cond=dict(
         type=dataset_type,
-        data_prefix='data/shapenet/cars_test',
-        specific_observation_idcs=[64],
-        cache_path='data/shapenet/cars_test_cache.pkl'),
+        data_prefix='../shapenetOOD-benchmark/unseen-categories_test',
+        specific_observation_idcs=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+        cache_path=''),
     train_dataloader=dict(split_data=True))
 lr_config = dict(
     policy='Fixed',

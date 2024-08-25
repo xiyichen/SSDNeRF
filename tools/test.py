@@ -156,7 +156,7 @@ def main():
     else:
         log_name = ckpt.split('.')[0] + '_eval_log' + '.txt'
         log_path = os.path.join(dirname, log_name)
-
+    
     logger = get_root_logger(
         log_file=log_path, log_level=cfg.log_level, file_mode='a')
     logger.info('evaluation')
@@ -193,20 +193,21 @@ def main():
         if args.data is not None:
             if eval_cfg.data not in args.data:
                 continue
+        
+        metrics = None
+        # metrics = eval_cfg['metrics']
+        # if isinstance(metrics, dict):
+        #     metrics = [metrics]
+        # metrics = [build_metric(metric) for metric in metrics]
+        # for metric in metrics:
+        #     metric.prepare()
 
-        metrics = eval_cfg['metrics']
-        if isinstance(metrics, dict):
-            metrics = [metrics]
-        metrics = [build_metric(metric) for metric in metrics]
-        for metric in metrics:
-            metric.prepare()
-
-        # check metrics for dist evaluation
-        if distributed and metrics:
-            for metric in metrics:
-                assert metric.name in _distributed_metrics, (
-                    f'We only support {_distributed_metrics} for multi gpu '
-                    f'evaluation, but receive {args.eval}.')
+        # # check metrics for dist evaluation
+        # if distributed and metrics:
+        #     for metric in metrics:
+        #         assert metric.name in _distributed_metrics, (
+        #             f'We only support {_distributed_metrics} for multi gpu '
+        #             f'evaluation, but receive {args.eval}.')
 
         # build the dataloader
         dataset = build_dataset(cfg.data[eval_cfg.data])
@@ -240,15 +241,15 @@ def main():
             viz_step=eval_cfg.get('viz_step', 1),
             sample_kwargs=eval_cfg.get('sample_kwargs', dict()))
 
-        if rank == 0:
-            sys.stdout.write('\n')
-            for metric in metrics:
-                with torch.no_grad():
-                    metric.summary()
-                for name, val in metric._result_dict.items():
-                    mmcv.print_log(f'{name} = {val}', 'mmgen')
-            for name, val in log_vars.items():
-                mmcv.print_log(f'{name} = {val}', 'mmgen')
+        # if rank == 0:
+        #     sys.stdout.write('\n')
+            # for metric in metrics:
+            #     with torch.no_grad():
+            #         metric.summary()
+            #     for name, val in metric._result_dict.items():
+            #         mmcv.print_log(f'{name} = {val}', 'mmgen')
+            # for name, val in log_vars.items():
+            #     mmcv.print_log(f'{name} = {val}', 'mmgen')
 
     return
 
