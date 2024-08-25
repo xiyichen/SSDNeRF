@@ -32,6 +32,15 @@ def qvec2rotmat(qvec):
         ]
     )
 
+def read_bbox_file(file_path):
+    with open(file_path, 'r') as file: 
+        lines = file.readlines()
+
+    values = lines[0].split() + lines[1].split()
+    float_values = [float(value) for value in values]
+    
+    return float_values
+
 def read_transparent_png(filename):
     image_4channel = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
     alpha_channel = image_4channel[:,:,3]
@@ -50,7 +59,7 @@ def read_transparent_png(filename):
     final_image = base + white
     final_image = (final_image).astype(np.uint8)
     final_image = cv2.resize(final_image, (128, 128))
-    return final_image
+    return final_image[:,:,::-1]
 
 def read_images_text(path):
     """
@@ -139,24 +148,25 @@ class ShapeNetOOD(Dataset):
         self.load_scenes()
 
         if self.test_pose_override is not None:
-            pose_dir = os.path.join(self.test_pose_override, 'pose')
-            pose_names = os.listdir(pose_dir)
-            pose_names.sort()
-            poses_list = []
-            for pose_name in pose_names:
-                pose_path = os.path.join(pose_dir, pose_name)
-                c2w = torch.FloatTensor(load_pose(pose_path))
-                cam_to_ndc = torch.cat(
-                    [c2w[:3, :3], (c2w[:3, 3:] - self.center[:, None]) / self.radius[:, None]], dim=-1)
-                poses_list.append(
-                    torch.cat([
-                        cam_to_ndc,
-                        cam_to_ndc.new_tensor([[0.0, 0.0, 0.0, 1.0]])
-                    ], dim=-2))
-            self.test_poses = torch.stack(poses_list, dim=0)  # (n, 4, 4)
-            fx, fy, cx, cy, h, w = load_intrinsics(os.path.join(self.test_pose_override, 'intrinsics.txt'))
-            intrinsics_single = torch.FloatTensor([fx, fy, cx, cy])
-            self.test_intrinsics = intrinsics_single[None].expand(self.test_poses.size(0), -1)
+            pass
+            # pose_dir = os.path.join(self.test_pose_override, 'pose')
+            # pose_names = os.listdir(pose_dir)
+            # pose_names.sort()
+            # poses_list = []
+            # for pose_name in pose_names:
+            #     pose_path = os.path.join(pose_dir, pose_name)
+            #     c2w = torch.FloatTensor(load_pose(pose_path))
+            #     cam_to_ndc = torch.cat(
+            #         [c2w[:3, :3], (c2w[:3, 3:] - self.center[:, None]) / self.radius[:, None]], dim=-1)
+            #     poses_list.append(
+            #         torch.cat([
+            #             cam_to_ndc,
+            #             cam_to_ndc.new_tensor([[0.0, 0.0, 0.0, 1.0]])
+            #         ], dim=-2))
+            # self.test_poses = torch.stack(poses_list, dim=0)  # (n, 4, 4)
+            # fx, fy, cx, cy, h, w = load_intrinsics(os.path.join(self.test_pose_override, 'intrinsics.txt'))
+            # intrinsics_single = torch.FloatTensor([fx, fy, cx, cy])
+            # self.test_intrinsics = intrinsics_single[None].expand(self.test_poses.size(0), -1)
         else:
             self.test_poses = self.test_intrinsics = None
 
@@ -178,25 +188,35 @@ class ShapeNetOOD(Dataset):
                         image_names = os.listdir(image_dir)
                         image_names.sort()
                         image_paths = []
-                        # for image_name in image_names:
-                        #     image_paths.append(os.path.join(image_dir, image_name))
-                            # pose_path = os.path.join(
-                            #     sample_dir, 'pose/' + os.path.splitext(image_name)[0] + '.txt')
-                            # poses.append(load_pose(pose_path))
+                        
                         poses_colmap = read_images_text(f'{sample_dir}/sparse/0/images.txt')
                         poses = []
+                        bbox = np.array(read_bbox_file(f'{sample_dir}/sparse/0/bbox.txt')).reshape(2,3)
+                        # bbox[:, [0, 1, 2]] = bbox[:, [2, 1, 0]]
+                        center = bbox.sum(axis=0)/2
+                        # center=np.zeros_like(center)
+                        # r = max(abs(bbox).sum(axis=0)/2)
+                        # print(self.radius[0].detach().cpu().numpy() / r)
                         for image_name in image_names:
                             w2c = np.eye(4)
-                            w2c[:3,:3] = poses_colmap[image_name]['R']
-                            w2c[:3,3] = poses_colmap[image_name]['t'].reshape(3,)
-                            c2w = np.linalg.inv(w2c)
+                            R = poses_colmap[image_name]['R']
+                            w2c[:3,:3] = R
+                            t = poses_colmap[image_name]['t'].reshape(3,1)
+                            t += R@center.reshape(3,1)
+                            # w2c[:3,3] = t.reshape(3,) * ((self.radius[0].detach().cpu().numpy() - 0.1) / (bbox - center).max())
+                            w2c[:3,3] = t.reshape(3,)
+                            # * ((self.radius[0].detach().cpu().numpy() - 0.1) / r)
+
+                            coord_trans_world = np.array(
+                                [[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+                            )
+                            c2w = coord_trans_world@np.linalg.inv(w2c)
+                            # print(sample_dir, image_name, c2w.tolist())
                             
-                            # coord_trans_world = np.array(
-                            #     [[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
-                            # )
-                            # c2w = coord_trans_world@c2w
                             image_paths.append(os.path.join(image_dir, image_name))
                             poses.append(c2w)
+                        
+                        # exit()
                         scenes.append(dict(
                             intrinsics=intrinsics,
                             image_paths=image_paths,
@@ -268,8 +288,8 @@ class ShapeNetOOD(Dataset):
             else:
                 cond_inds = self.specific_observation_idcs
             test_inds = list(range(num_imgs))
-            for cond_ind in cond_inds:
-                test_inds.remove(cond_ind)
+            # for cond_ind in cond_inds:
+            #     test_inds.remove(cond_ind)
 
             if self.load_cond_data and len(cond_inds) > 0:
                 cond_imgs, cond_poses, cond_intrinsics, cond_img_paths = gather_imgs(cond_inds)
