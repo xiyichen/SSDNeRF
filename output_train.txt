@@ -1,0 +1,2 @@
+loading dataset:  /nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/results_256_sin-0-10x5_max2-20x1_1-4_rotate_sh0/
+loading dataset:  /nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/unseen-categories_test/

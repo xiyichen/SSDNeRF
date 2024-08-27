@@ -10,6 +10,7 @@ import cv2
 from mmcv.parallel import DataContainer as DC
 from mmgen.datasets.builder import DATASETS
 from scipy.spatial.transform import Rotation as Rot
+from tqdm import tqdm
 
 def qvec2rotmat(qvec):
     return np.array(
@@ -108,6 +109,7 @@ def load_pose(path):
 class ShapeNetOOD(Dataset):
     def __init__(self,
                  data_prefix,
+                 object_list_prefix=None,
                  code_dir=None,
                  code_only=False,
                  load_imgs=True,
@@ -127,6 +129,7 @@ class ShapeNetOOD(Dataset):
                  ):
         super(ShapeNetOOD, self).__init__()
         self.data_prefix = data_prefix
+        self.object_list_prefix = object_list_prefix
         self.code_dir = code_dir
         self.code_only = code_only
         self.load_imgs = load_imgs
@@ -174,13 +177,17 @@ class ShapeNetOOD(Dataset):
         if self.cache_path is not None and os.path.exists(self.cache_path):
             scenes = mmcv.load(self.cache_path)
         else:
+            with open(self.object_list_prefix, 'r') as f:
+                lines = f.readlines()
+            obj_list = [line.strip() for line in lines]
             data_prefix_list = self.data_prefix if isinstance(self.data_prefix, list) else [self.data_prefix]
             scenes = []
             for data_prefix in data_prefix_list:
                 sample_dir_list = os.listdir(data_prefix)
-                # sample_dir_list.sort()
-                for name in sample_dir_list:
-                    sample_dir = os.path.join(data_prefix, name)
+                sample_dir_list = [os.path.join(data_prefix, obj) for obj in obj_list]
+                sample_dir_list.sort()
+                print('loading dataset: ', data_prefix)
+                for sample_dir in tqdm(sample_dir_list):
                     if os.path.isdir(sample_dir):
                         # intrinsics = load_intrinsics(os.path.join(sample_dir, 'intrinsics.txt'))
                         intrinsics = 400, 400, 64, 64, 128, 128
@@ -188,6 +195,8 @@ class ShapeNetOOD(Dataset):
                         image_names = os.listdir(image_dir)
                         image_names.sort()
                         image_paths = []
+                        if len(image_names) < 37:
+                            continue
                         
                         poses_colmap = read_images_text(f'{sample_dir}/sparse/0/images.txt')
                         poses = []
@@ -203,8 +212,8 @@ class ShapeNetOOD(Dataset):
                             w2c[:3,:3] = R
                             t = poses_colmap[image_name]['t'].reshape(3,1)
                             t += R@center.reshape(3,1)
-                            # w2c[:3,3] = t.reshape(3,) * ((self.radius[0].detach().cpu().numpy() - 0.1) / (bbox - center).max())
-                            w2c[:3,3] = t.reshape(3,)
+                            w2c[:3,3] = t.reshape(3,) * ((self.radius[0].detach().cpu().numpy() - 0) / (bbox - center).max())
+                            # w2c[:3,3] = t.reshape(3,)
                             # * ((self.radius[0].detach().cpu().numpy() - 0.1) / r)
 
                             coord_trans_world = np.array(
@@ -215,8 +224,10 @@ class ShapeNetOOD(Dataset):
                             
                             image_paths.append(os.path.join(image_dir, image_name))
                             poses.append(c2w)
+                        # if '04330267-6265be481c953acd8c159f8d5e761b17' in sample_dir:
+                        #     print(image_dir, image_names, len(poses), len(image_names))
+                        #     exit()
                         
-                        # exit()
                         scenes.append(dict(
                             intrinsics=intrinsics,
                             image_paths=image_paths,
@@ -224,6 +235,7 @@ class ShapeNetOOD(Dataset):
             scenes = sorted(scenes, key=lambda x: x['image_paths'][0].split('/')[-3])
             # if self.cache_path is not None:
             #     mmcv.dump(scenes, self.cache_path)
+            # exit()
         end = len(scenes)
         if self.max_num_scenes >= 0:
             end = min(end, self.max_num_scenes * self.step)
@@ -288,8 +300,8 @@ class ShapeNetOOD(Dataset):
             else:
                 cond_inds = self.specific_observation_idcs
             test_inds = list(range(num_imgs))
-            # for cond_ind in cond_inds:
-            #     test_inds.remove(cond_ind)
+            for cond_ind in cond_inds:
+                test_inds.remove(cond_ind)
 
             if self.load_cond_data and len(cond_inds) > 0:
                 cond_imgs, cond_poses, cond_intrinsics, cond_img_paths = gather_imgs(cond_inds)
@@ -317,7 +329,7 @@ class ShapeNetOOD(Dataset):
 
         if self.test_pose_override is not None:
             results.update(test_poses=self.test_poses, test_intrinsics=self.test_intrinsics)
-
+        # print(scene_name, results['cond_poses'].shape)
         return results
 
     def __len__(self):

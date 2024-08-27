@@ -1,4 +1,4 @@
-name = 'ssdnerf_shapenetood_test_recons1v'
+name = 'ssdnerf_shapenetood_test_recons32v'
 
 model = dict(
     type='DiffusionNeRF',
@@ -61,7 +61,7 @@ model = dict(
     cache_size=2458)  # number of training scenes
 
 save_interval = 5000
-eval_interval = 20000
+eval_interval = 1000
 code_dir = 'cache/' + name + '/code'
 work_dir = 'work_dirs/' + name
 
@@ -105,11 +105,27 @@ dataset_type = 'ShapeNetOOD'
 data = dict(
     samples_per_gpu=8,
     workers_per_gpu=4,
+    # train=dict(
+    #     type=dataset_type,
+    #     data_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/results_256_sin-0-10x5_max2-20x1_1-4_rotate_sh0',
+    #     object_list_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/all.seen-categories_train.txt',
+    #     # cache_path='data/shapenet/cars_train_cache.pkl',
+    #     ),
+    
+    # overfit the network on a small subset
+    # train=dict(
+    #     type=dataset_type,
+    #     data_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/unseen-categories_test/',
+    #     object_list_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/all.unseen-categories_test.txt',
+    #     # cache_path='data/shapenet/cars_train_cache.pkl',
+    #     ),
     train=dict(
         type=dataset_type,
-        data_prefix='data/shapenet/cars_train',
+        data_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/results_256_sin-0-10x5_max2-20x1_1-4_rotate_sh0/',
+        object_list_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/all.seen-categories_test.txt',
         # cache_path='data/shapenet/cars_train_cache.pkl',
         ),
+    
     # val_uncond=dict(
     #     type=dataset_type,
     #     data_prefix='data/shapenet/cars_test',
@@ -119,7 +135,8 @@ data = dict(
     #     cache_path='data/shapenet/cars_test_cache.pkl'),
     val_cond=dict(
         type=dataset_type,
-        data_prefix='../shapenetOOD-benchmark/unseen-categories_test',
+        data_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/unseen-categories_test/',
+        object_list_prefix='/nfs/tang.scratch.inf.ethz.ch/export/tang/cluster/yutongchen/code/stanford-shapenet-renderer/shapenetOOD-benchmark/all.unseen-categories_test.txt',
         specific_observation_idcs=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
         cache_path=''),
     train_dataloader=dict(split_data=True))
@@ -136,11 +153,11 @@ evaluation = [
         data='val_cond',
         interval=eval_interval,
         feed_batch_size=32,
-        viz_step=32,
+        viz_step=1,
         metrics=dict(
             type='FID',
-            num_images=704 * 250,
-            inception_pkl='work_dirs/cache/cars_test_inception_stylegan.pkl',
+            num_images=100 * 5,
+            inception_pkl='work_dirs/cache/shapenet_unseen_category_test_inception_stylegan.pkl',
             inception_args=dict(
                 type='StyleGAN',
                 inception_path='work_dirs/cache/inception-2015-12-05.pt'),

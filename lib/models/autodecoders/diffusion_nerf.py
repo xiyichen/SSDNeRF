@@ -271,6 +271,8 @@ class DiffusionNeRF(MultiSceneNeRF):
         decoder_training_prev = decoder.training
         decoder.train(True)
 
+        # import pdb
+        # pdb.set_trace()
         with module_requires_grad(diffusion, False), module_requires_grad(decoder, False):
             n_inverse_rays = self.test_cfg.get('n_inverse_rays', 4096)
             raybatch_inds, num_raybatch = self.get_raybatch_inds(cond_imgs, n_inverse_rays)
@@ -297,14 +299,14 @@ class DiffusionNeRF(MultiSceneNeRF):
             if noise is None:
                 noise = torch.randn(
                     (num_scenes, *self.code_size), device=get_module_device(self))
-
+            # pdb.set_trace()
             with torch.autocast(
                     device_type='cuda',
                     enabled=self.autocast_dtype is not None,
                     dtype=getattr(torch, self.autocast_dtype) if self.autocast_dtype is not None else None):
                 code = diffusion(
                     self.code_diff_pr(noise), return_loss=False,
-                    grad_guide_fn=grad_guide_fn, concat_cond=concat_cond, **kwargs)
+                    grad_guide_fn=grad_guide_fn, concat_cond=concat_cond, **kwargs) # 75
 
         decoder.train(decoder_training_prev)
 
@@ -345,7 +347,9 @@ class DiffusionNeRF(MultiSceneNeRF):
         decoder.train(True)
 
         extra_scene_step = self.test_cfg.get('extra_scene_step', 0)
-        n_inverse_steps = self.test_cfg.get('n_inverse_steps', 100)
+        n_inverse_steps = self.test_cfg.get('n_inverse_steps', 100) # 25
+        # import pdb
+        # pdb.set_trace()
         assert n_inverse_steps > 0
         if show_pbar:
             pbar = mmcv.ProgressBar(n_inverse_steps)
@@ -405,7 +409,6 @@ class DiffusionNeRF(MultiSceneNeRF):
 
     def val_step(self, data, viz_dir=None, viz_dir_guide=None, **kwargs):
         decoder = self.decoder_ema if self.decoder_use_ema else self.decoder
-
         with torch.no_grad():
             if 'code' in data:
                 code, density_grid, density_bitfield = self.load_scene(
@@ -416,6 +419,7 @@ class DiffusionNeRF(MultiSceneNeRF):
                     code, density_grid, density_bitfield = self.val_guide(data, **kwargs)
                 elif cond_mode == 'optim':
                     code, density_grid, density_bitfield = self.val_optim(data, **kwargs)
+                # here
                 elif cond_mode == 'guide_optim':
                     code, density_grid, density_bitfield = self.val_guide(data, **kwargs)
                     if viz_dir_guide is not None and 'test_poses' in data:

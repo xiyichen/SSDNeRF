@@ -14,7 +14,7 @@ def evaluate_3d(model, dataloader, metrics=None,
     batch_size = dataloader.batch_size
     rank, ws = get_dist_info()
     total_batch_size = batch_size * ws
-
+    # print('viz_step: ', viz_step)
     max_num_scenes = len(dataloader.dataset)
     if rank == 0:
         mmcv.print_log(
@@ -28,14 +28,21 @@ def evaluate_3d(model, dataloader, metrics=None,
         sample_kwargs_ = deepcopy(sample_kwargs)
         if viz_dir is not None and i % viz_step == 0:
             sample_kwargs_.update(viz_dir=viz_dir)
+            
+        # import pdb
+        # pdb.set_trace()
+        
+        # rendering
         outputs_dict = model.val_step(
             data, show_pbar=rank == 0,
             **sample_kwargs_)
+        # pdb.set_trace()
         for k, v in outputs_dict['log_vars'].items():
             if k in log_vars:
                 log_vars[k].append(outputs_dict['log_vars'][k])
             else:
                 log_vars[k] = [outputs_dict['log_vars'][k]]
+        
         batch_size_list.append(outputs_dict['num_samples'])
 
         if metrics is not None and len(metrics) > 0:
@@ -46,6 +53,7 @@ def evaluate_3d(model, dataloader, metrics=None,
                 if 'test_imgs' in data and not isinstance(metric, (FID, IS)) and real_imgs is None:
                     real_imgs = data['test_imgs'].permute(0, 1, 4, 2, 3)
                     real_imgs = real_imgs.reshape(-1, *real_imgs.shape[2:]).split(feed_batch_size, dim=0)
+                print('pred_imgs', len(pred_imgs))
                 for batch_id, batch_imgs in enumerate(pred_imgs):
                     # feed in fake images
                     metric.feed(batch_imgs * 2 - 1, 'fakes')

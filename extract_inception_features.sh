@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python tools/inception_stat.py configs/shapenet_ood_cfgs/ssdnerf_shapenetood_test_recons32v.py
